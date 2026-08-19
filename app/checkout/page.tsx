@@ -17,6 +17,8 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { cart, total, clearCart } = useCart();
 
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -156,20 +158,40 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-gray-50/70 pb-16">
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10 px-4 py-4 sm:px-8">
+      {/* 1. BRANDED HEADER WITH CART SUMMARY */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-20 px-4 py-3 sm:px-8 shadow-xs">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
+          {/* Brand Logo / Name */}
           <Link
             href="/"
-            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-700 hover:text-gray-900"
+            className="text-lg sm:text-xl font-black text-amber-950 tracking-tight hover:opacity-90 transition-opacity"
           >
-            <ArrowLeft className="w-4 h-4" /> Back
+            Nades Hands
           </Link>
-          <span className="text-base font-black text-amber-950">Checkout</span>
-          <div className="w-12"></div>
-        </div>
-      </div>
 
+          {/* Controls: Back to Store + Live Cart Badge */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-amber-900 bg-gray-100 hover:bg-amber-50 px-3 py-1.5 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Back to Store</span>
+            </Link>
+
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-full">
+              <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
+              <span>
+                {totalItems} {totalItems === 1 ? "Item" : "Items"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. CHECKOUT CONTENT AREA */}
       <div className="max-w-4xl mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Form Column */}
         <div className="md:col-span-7 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs space-y-5">
           <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
             <MapPin className="w-5 h-5 text-amber-600" /> Delivery Details
@@ -255,7 +277,7 @@ export default function CheckoutPage() {
             <button
               type="submit"
               disabled={isProcessing}
-              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 text-white font-bold py-3.5 rounded-xl shadow-xs transition-all text-sm mt-4 flex items-center justify-center gap-2"
+              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 text-white font-bold py-3.5 rounded-xl shadow-xs transition-all text-sm mt-4 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
               <ShieldCheck className="w-5 h-5" />
               {isProcessing
@@ -265,6 +287,7 @@ export default function CheckoutPage() {
           </form>
         </div>
 
+        {/* Order Summary Column */}
         <div className="md:col-span-5 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs h-fit space-y-4">
           <h2 className="text-base sm:text-lg font-bold text-gray-900 border-b border-gray-100 pb-3">
             Order Summary

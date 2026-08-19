@@ -10,8 +10,8 @@ export default function Header() {
   const pathname = usePathname();
   const { cart = [], setIsCartOpen } = useCart();
 
-  // Hide the storefront header and hero completely when on any admin route
-  if (pathname?.startsWith("/admin")) {
+  // Hide the storefront header and hero completely on admin and checkout routes
+  if (pathname?.startsWith("/admin") || pathname === "/checkout") {
     return null;
   }
 
