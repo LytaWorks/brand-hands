@@ -75,8 +75,8 @@ export default function AdminPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
-
-    if (password === adminPassword) {
+    //.trim prevents trailing spaces from failing the match
+    if (password.trim() === adminPassword.trim()) {
       setIsAuthenticated(true);
       setError("");
     } else {
