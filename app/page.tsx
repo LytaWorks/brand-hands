@@ -37,8 +37,8 @@ export default function Home() {
 
             <div className="relative aspect-[3/2] w-full overflow-hidden rounded-card bg-oat lg:aspect-[4/5]">
               <Image
-                src="https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1200&q=80"
-                alt="A layered chocolate cake on a stand"
+                src="/images/hero.jpg"
+                alt="A glazed lemon loaf cake, sliced, on a cooling rack"
                 fill
                 preload
                 fetchPriority="high"

@@ -15,8 +15,7 @@ export const PRODUCTS: Product[] = [
       "Rich, moist cocoa loaf cake topped with dark chocolate glaze. Baked fresh every Friday.",
     price: 120,
     category: "Loaf Cake",
-    image:
-      "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&q=80&w=900",
+    image: "/images/chocolate-loaf.jpg",
   },
   {
     id: "2",
@@ -25,8 +24,7 @@ export const PRODUCTS: Product[] = [
       "Tangy zest lemon pound loaf packed with wild blueberries and sweet icing drizzle.",
     price: 110,
     category: "Loaf Cake",
-    image:
-      "https://images.unsplash.com/photo-1606890737304-57a1ca8a5b62?auto=format&fit=crop&q=80&w=900",
+    image: "/images/lemon-blueberry-loaf.jpg",
   },
   {
     id: "3",
@@ -35,8 +33,7 @@ export const PRODUCTS: Product[] = [
       "Classic red velvet base paired with silky cream cheese frosting.",
     price: 85,
     category: "Cupcakes",
-    image:
-      "https://images.unsplash.com/photo-1614707267537-b85aaf00c4b7?auto=format&fit=crop&q=80&w=900",
+    image: "/images/red-velvet-cupcakes.jpg",
   },
   {
     id: "4",
@@ -45,8 +42,7 @@ export const PRODUCTS: Product[] = [
       "Fluffy vanilla cupcakes filled with chocolate fudge swirl and sprinkles.",
     price: 80,
     category: "Cupcakes",
-    image:
-      "https://images.unsplash.com/photo-1576618148400-f54bed99fcfd?auto=format&fit=crop&q=80&w=900",
+    image: "/images/vanilla-fudge-cupcakes.jpg",
   },
   {
     id: "5",
@@ -55,8 +51,7 @@ export const PRODUCTS: Product[] = [
       "Triple-layered chocolate slice cake topped with gourmet cocoa flakes.",
     price: 95,
     category: "Specialty Cake",
-    image:
-      "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=900",
+    image: "/images/dark-cocoa-slice.jpg",
   },
   {
     id: "6",
@@ -65,8 +60,7 @@ export const PRODUCTS: Product[] = [
       "Spiced carrot loaf infused with crushed walnuts and smooth cream cheese frosting.",
     price: 115,
     category: "Loaf Cake",
-    image:
-      "https://images.unsplash.com/photo-1621303837174-89787a7d4729?auto=format&fit=crop&q=80&w=900",
+    image: "/images/carrot-cream-loaf.jpg",
   },
 ];
 
