@@ -1,58 +1,95 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { supabase } from "@/lib/supabase";
+import { formatGHS } from "@/lib/products";
+import BakeDate from "@/components/BakeDate";
 import {
   ArrowLeft,
-  ShieldCheck,
-  MapPin,
-  ShoppingBag,
-  CheckCircle,
+  CircleAlert,
+  CircleCheck,
+  LockKeyhole,
+  ShoppingBasket,
 } from "lucide-react";
 
+type FieldName = "fullName" | "email" | "phone" | "deliveryLocation";
+type FormData = Record<FieldName | "notes", string>;
+
+interface Confirmation {
+  reference: string;
+  name: string;
+  total: number;
+  /** Set when Paystack took the payment but the order row did not save. */
+  saveFailed: boolean;
+}
+
+function validate(data: FormData) {
+  const errors: Partial<Record<FieldName, string>> = {};
+  if (!data.fullName.trim()) errors.fullName = "Enter your name.";
+  if (!/^\S+@\S+\.\S+$/.test(data.email.trim())) {
+    errors.email = "Enter an email like name@example.com. Your receipt goes here.";
+  }
+  if (data.phone.replace(/\D/g, "").length < 9) {
+    errors.phone = "Enter a phone number we can reach you on.";
+  }
+  if (!data.deliveryLocation.trim()) {
+    errors.deliveryLocation = "Tell us your hostel, block and room.";
+  }
+  return errors;
+}
+
 export default function CheckoutPage() {
-  const router = useRouter();
-  const { cart, total, clearCart } = useCart();
+  const { cart, ready, itemCount, total, clearCart } = useCart();
+  const formRef = useRef<HTMLFormElement>(null);
 
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     fullName: "",
     email: "",
     phone: "",
     deliveryLocation: "",
     notes: "",
   });
-
+  const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
+  const [formError, setFormError] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [orderSuccess, setOrderSuccess] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name in errors) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
 
-    if (
-      !formData.fullName ||
-      !formData.email ||
-      !formData.phone ||
-      !formData.deliveryLocation
-    ) {
-      alert("Please fill in all required fields.");
+    const found = validate(formData);
+    setErrors(found);
+    const firstInvalid = Object.keys(found)[0];
+    if (firstInvalid) {
+      formRef.current
+        ?.querySelector<HTMLElement>(`[name="${firstInvalid}"]`)
+        ?.focus();
+      return;
+    }
+
+    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
+    if (!paystackKey) {
+      setFormError(
+        "Online payment is not available right now. Please contact us to place your order.",
+      );
       return;
     }
 
     setIsProcessing(true);
-
-    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
@@ -60,7 +97,7 @@ export default function CheckoutPage() {
 
       paystack.newTransaction({
         key: paystackKey,
-        email: formData.email,
+        email: formData.email.trim(),
         amount: Math.round(total * 100),
         currency: "GHS",
         onSuccess: async (transaction: { reference: string }) => {
@@ -92,13 +129,15 @@ export default function CheckoutPage() {
 
           if (error) {
             console.error("Supabase save error:", error.message);
-            alert(
-              `Payment succeeded, but order logging had an issue: ${error.message}`,
-            );
           }
 
+          setConfirmation({
+            reference: transaction.reference,
+            name: formData.fullName.trim(),
+            total,
+            saveFailed: Boolean(error),
+          });
           setIsProcessing(false);
-          setOrderSuccess(true);
           clearCart();
         },
         onCancel: () => {
@@ -108,218 +147,310 @@ export default function CheckoutPage() {
     } catch (error) {
       console.error("Paystack error:", error);
       setIsProcessing(false);
-      alert("Failed to initialize Paystack payment.");
+      setFormError(
+        "We could not open the payment window. Check your connection and try again.",
+      );
     }
   };
 
-  if (orderSuccess) {
+  if (confirmation) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white max-w-md w-full rounded-3xl p-6 sm:p-8 text-center shadow-xs border border-gray-100 space-y-4">
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
-            Order Confirmed!
-          </h1>
-          <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-            Thank you,{" "}
-            <span className="font-bold text-gray-900">{formData.fullName}</span>
-            ! Your payment was successful and your order has been received.
-          </p>
-          <button
-            onClick={() => router.push("/")}
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3.5 rounded-xl transition-all text-sm mt-4"
-          >
-            Back to Home
-          </button>
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="slip w-full max-w-md animate-rise">
+          <div className="p-6 text-center sm:p-8">
+            <CircleCheck className="mx-auto size-12 text-leaf" aria-hidden />
+            <h1 className="mt-4 font-display text-3xl font-semibold tracking-tight">
+              Order confirmed
+            </h1>
+            <p className="mt-2 text-mocha">
+              Thank you, {confirmation.name}. We received your payment of{" "}
+              {formatGHS(confirmation.total)}.
+            </p>
+          </div>
+
+          <dl className="slip-tear space-y-3 p-6 sm:px-8">
+            <div className="flex justify-between gap-4">
+              <dt className="text-mocha">Reference</dt>
+              <dd className="break-all text-right font-semibold">
+                {confirmation.reference}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-mocha">Delivery</dt>
+              <dd className="text-right font-semibold">
+                Friday afternoon or the weekend
+              </dd>
+            </div>
+          </dl>
+
+          {confirmation.saveFailed && (
+            <p
+              role="alert"
+              className="mx-6 mb-6 flex gap-3 rounded-field bg-jam-soft p-4 text-sm text-jam sm:mx-8"
+            >
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                Your payment went through, but we could not save your delivery
+                details. Please send us the reference above with your name and
+                hostel so we can bake your order.
+              </span>
+            </p>
+          )}
+
+          <div className="slip-tear flex flex-col gap-3 p-6 sm:px-8">
+            {!confirmation.saveFailed && (
+              <Link
+                href={`/tracking?ref=${encodeURIComponent(confirmation.reference)}`}
+                className="btn btn-primary"
+              >
+                Track this order
+              </Link>
+            )}
+            <Link href="/" className="btn btn-quiet">
+              Back to the menu
+            </Link>
+          </div>
         </div>
       </main>
     );
   }
 
+  if (!ready) {
+    return <main className="flex-1" aria-busy="true" />;
+  }
+
   if (cart.length === 0) {
     return (
-      <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 text-center">
-        <ShoppingBag className="w-16 h-16 text-gray-300 mb-4" />
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
-          Your cart is empty
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center">
+        <ShoppingBasket className="size-12 text-mocha" aria-hidden />
+        <h1 className="mt-4 font-display text-3xl font-semibold tracking-tight">
+          Your basket is empty
         </h1>
-        <p className="text-sm text-gray-500 mt-1 mb-6">
-          Add some fresh bakes to your cart before checking out.
+        <p className="mt-2 max-w-sm text-mocha">
+          Add something from the menu first, then come back to check out.
         </p>
-        <Link
-          href="/"
-          className="bg-amber-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-amber-700 transition-colors"
-        >
-          Browse Selection
+        <Link href="/#menu" className="btn btn-primary mt-6">
+          See the menu
         </Link>
       </main>
     );
   }
 
+  const fieldProps = (name: FieldName) => ({
+    id: name,
+    name,
+    value: formData[name],
+    onChange: handleInputChange,
+    className: "field",
+    "aria-invalid": errors[name] ? true : undefined,
+    "aria-describedby": errors[name] ? `${name}-error` : undefined,
+  });
+
+  const fieldError = (name: FieldName) =>
+    errors[name] && (
+      <p id={`${name}-error`} className="mt-1.5 text-sm text-jam">
+        {errors[name]}
+      </p>
+    );
+
   return (
-    <main className="min-h-screen bg-gray-50/70 pb-16">
-      {/* 1. BRANDED HEADER WITH CART SUMMARY */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-20 px-4 py-3 sm:px-8 shadow-xs">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          {/* Brand Logo / Name */}
+    <>
+      <header className="sticky top-0 z-20 border-b border-crust bg-flour/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link
             href="/"
-            className="text-lg sm:text-xl font-black text-amber-950 tracking-tight hover:opacity-90 transition-opacity"
+            className="whitespace-nowrap font-display text-2xl font-semibold leading-none tracking-tight"
           >
             Nades Hands
           </Link>
-
-          {/* Controls: Back to Store + Live Cart Badge */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-amber-900 bg-gray-100 hover:bg-amber-50 px-3 py-1.5 rounded-full transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Back to Store</span>
-            </Link>
-
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-full">
-              <ShoppingBag className="w-3.5 h-3.5 text-amber-600" />
-              <span>
-                {totalItems} {totalItems === 1 ? "Item" : "Items"}
-              </span>
-            </div>
-          </div>
+          <Link href="/" className="btn btn-quiet btn-sm">
+            <ArrowLeft className="size-4" aria-hidden />
+            <span className="sm:hidden">Menu</span>
+            <span className="hidden sm:inline">Back to the menu</span>
+          </Link>
         </div>
       </header>
 
-      {/* 2. CHECKOUT CONTENT AREA */}
-      <div className="max-w-4xl mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Form Column */}
-        <div className="md:col-span-7 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs space-y-5">
-          <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-            <MapPin className="w-5 h-5 text-amber-600" /> Delivery Details
-          </h2>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        <h1 className="font-display text-[clamp(2rem,5vw,3rem)] font-semibold leading-[1.05] tracking-tight">
+          Checkout
+        </h1>
 
-          <form onSubmit={handlePayment} className="space-y-4">
+        <div className="mt-8 grid gap-8 md:grid-cols-[1.25fr_1fr] md:items-start md:gap-12">
+          <form
+            ref={formRef}
+            onSubmit={handlePayment}
+            noValidate
+            className="space-y-5"
+          >
+            <h2 className="font-display text-2xl font-semibold tracking-tight">
+              Where should we deliver?
+            </h2>
+
             <div>
-              <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                Full Name *
+              <label htmlFor="fullName" className="mb-1.5 block font-medium">
+                Full name
               </label>
               <input
+                {...fieldProps("fullName")}
                 type="text"
-                name="fullName"
-                required
-                value={formData.fullName}
-                onChange={handleInputChange}
-                placeholder="e.g. Nana Ama"
-                className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                autoComplete="name"
+                placeholder="Nana Ama Mensah"
               />
+              {fieldError("fullName")}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid gap-5 sm:grid-cols-2">
               <div>
-                <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                  Email Address *
+                <label htmlFor="email" className="mb-1.5 block font-medium">
+                  Email
                 </label>
                 <input
+                  {...fieldProps("email")}
                   type="email"
-                  name="email"
-                  required
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  placeholder="name@domain.com"
-                  className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  inputMode="email"
+                  autoComplete="email"
+                  spellCheck={false}
+                  placeholder="name@example.com"
                 />
+                {fieldError("email")}
               </div>
 
               <div>
-                <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                  Phone Number *
+                <label htmlFor="phone" className="mb-1.5 block font-medium">
+                  Phone
                 </label>
                 <input
+                  {...fieldProps("phone")}
                   type="tel"
-                  name="phone"
-                  required
-                  value={formData.phone}
-                  onChange={handleInputChange}
+                  inputMode="tel"
+                  autoComplete="tel"
                   placeholder="024 000 0000"
-                  className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 transition-all"
                 />
+                {fieldError("phone")}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                Campus / Hostel Location *
+              <label
+                htmlFor="deliveryLocation"
+                className="mb-1.5 block font-medium"
+              >
+                Hostel, block and room
               </label>
               <input
+                {...fieldProps("deliveryLocation")}
                 type="text"
-                name="deliveryLocation"
-                required
-                value={formData.deliveryLocation}
-                onChange={handleInputChange}
-                placeholder="e.g. Pentagon Block B, Room 204"
-                className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                autoComplete="street-address"
+                placeholder="Pentagon Block B, Room 204"
               />
+              {fieldError("deliveryLocation")}
             </div>
 
             <div>
-              <label className="block text-xs sm:text-sm font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                Delivery Notes (Optional)
+              <label htmlFor="notes" className="mb-1.5 block font-medium">
+                Delivery notes{" "}
+                <span className="font-normal text-mocha">(optional)</span>
               </label>
               <textarea
+                id="notes"
                 name="notes"
                 rows={2}
                 value={formData.notes}
                 onChange={handleInputChange}
-                placeholder="e.g. Call me when at the entrance"
-                className="w-full px-3.5 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 resize-none transition-all"
+                placeholder="Call me when you are at the entrance"
+                className="field resize-none"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={isProcessing}
-              className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 text-white font-bold py-3.5 rounded-xl shadow-xs transition-all text-sm mt-4 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
-            >
-              <ShieldCheck className="w-5 h-5" />
-              {isProcessing
-                ? "Opening Paystack..."
-                : `Pay GHS ${total.toFixed(2)} with Paystack`}
-            </button>
-          </form>
-        </div>
-
-        {/* Order Summary Column */}
-        <div className="md:col-span-5 bg-white p-5 sm:p-7 rounded-3xl border border-gray-100 shadow-xs h-fit space-y-4">
-          <h2 className="text-base sm:text-lg font-bold text-gray-900 border-b border-gray-100 pb-3">
-            Order Summary
-          </h2>
-
-          <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto pr-1">
-            {cart.map((item) => (
-              <div
-                key={item.product.id}
-                className="py-2.5 flex justify-between text-xs sm:text-sm"
+            {formError && (
+              <p
+                role="alert"
+                className="flex gap-3 rounded-field bg-jam-soft p-4 text-sm text-jam"
               >
-                <div>
-                  <p className="font-bold text-gray-800">{item.product.name}</p>
-                  <p className="text-gray-400 font-medium">
-                    Qty: {item.quantity}
-                  </p>
-                </div>
-                <p className="font-black text-gray-900">
-                  GHS {(item.product.price * item.quantity).toFixed(2)}
-                </p>
-              </div>
-            ))}
-          </div>
+                <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>{formError}</span>
+              </p>
+            )}
 
-          <div className="pt-3 border-t border-gray-100 flex justify-between items-center text-sm sm:text-base font-black text-gray-900">
-            <span>Total Amount</span>
-            <span className="text-amber-600 text-lg">
-              GHS {total.toFixed(2)}
-            </span>
-          </div>
+            <div className="pt-1">
+              <button
+                type="submit"
+                disabled={isProcessing}
+                className="btn btn-primary w-full tabular-nums"
+              >
+                <LockKeyhole className="size-4" aria-hidden />
+                {isProcessing ? "Opening Paystack…" : `Pay ${formatGHS(total)}`}
+              </button>
+              <p className="mt-3 text-center text-sm text-mocha">
+                Paid securely through Paystack.
+              </p>
+            </div>
+          </form>
+
+          <aside aria-labelledby="summary-heading" className="slip md:sticky md:top-24">
+            <div className="p-5 sm:p-6">
+              <h2
+                id="summary-heading"
+                className="font-display text-2xl font-semibold tracking-tight"
+              >
+                Your order
+                <span className="ml-2 font-sans text-base font-medium text-mocha tabular-nums">
+                  {itemCount} {itemCount === 1 ? "item" : "items"}
+                </span>
+              </h2>
+
+              <ul className="mt-4 space-y-4">
+                {cart.map((item) => (
+                  <li key={item.product.id} className="flex items-center gap-3">
+                    <div className="relative size-14 shrink-0 overflow-hidden rounded-field bg-oat">
+                      <Image
+                        src={item.product.image}
+                        alt=""
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold leading-snug">
+                        {item.product.name}
+                      </p>
+                      <p className="text-sm text-mocha tabular-nums">
+                        {item.quantity} × {formatGHS(item.product.price)}
+                      </p>
+                    </div>
+                    <p className="shrink-0 font-semibold tabular-nums">
+                      {formatGHS(item.product.price * item.quantity)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <dl className="slip-tear space-y-2 p-5 sm:p-6">
+              <div className="flex justify-between gap-4">
+                <dt className="text-mocha">Baked on</dt>
+                <dd className="font-semibold">
+                  <BakeDate />
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-mocha">Delivered</dt>
+                <dd className="text-right font-semibold">
+                  That afternoon or weekend
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4 pt-2">
+                <dt className="font-semibold">Total</dt>
+                <dd className="font-display text-2xl font-semibold tabular-nums">
+                  {formatGHS(total)}
+                </dd>
+              </div>
+            </dl>
+          </aside>
         </div>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

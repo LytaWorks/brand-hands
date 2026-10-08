@@ -2,120 +2,134 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowRight, ShoppingBasket, Trash2, X } from "lucide-react";
 import { useCart } from "@/context/CartContext";
-import { X, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
+import { formatGHS } from "@/lib/products";
+import Sheet from "@/components/Sheet";
+import QuantityStepper from "@/components/QuantityStepper";
+import BakeDate from "@/components/BakeDate";
 
 export default function CartDrawer() {
-  const { cart, total, removeFromCart, isCartOpen, setIsCartOpen } = useCart();
+  const {
+    cart,
+    itemCount,
+    total,
+    setQuantity,
+    removeFromCart,
+    isCartOpen,
+    setIsCartOpen,
+  } = useCart();
 
-  if (!isCartOpen) return null;
-
-  // Safely compute or fallback to total (defaults to 0 if undefined)
-  const subtotal =
-    total ??
-    cart.reduce(
-      (sum, item) => sum + (item.product?.price || 0) * item.quantity,
-      0,
-    );
+  const close = () => setIsCartOpen(false);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop Overlay */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
-        onClick={() => setIsCartOpen(false)}
-      />
-
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-xl flex flex-col">
-          {/* Header */}
-          <div className="p-4 sm:p-6 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-amber-600" />
-              <h2 className="text-lg font-bold text-gray-900">Your Cart</h2>
-              <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                {cart.reduce((sum, item) => sum + item.quantity, 0)}
+    <Sheet open={isCartOpen} onClose={close} label="Your basket" variant="drawer">
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between gap-4 border-b border-crust px-4 py-3 sm:px-6">
+          <h2 className="font-display text-2xl font-semibold tracking-tight">
+            Your basket
+            {itemCount > 0 && (
+              <span className="ml-2 font-sans text-base font-medium text-mocha tabular-nums">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
               </span>
-            </div>
-            <button
-              onClick={() => setIsCartOpen(false)}
-              className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
-              aria-label="Close cart"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+            )}
+          </h2>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close basket"
+            className="flex size-10 items-center justify-center rounded-full text-cocoa transition-[background-color,transform] duration-200 ease-soft hover:bg-oat active:scale-95"
+          >
+            <X className="size-5" aria-hidden />
+          </button>
+        </div>
 
-          {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-            {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-3">
-                <ShoppingBag className="w-12 h-12 text-gray-300" />
-                <p className="text-sm font-medium text-gray-500">
-                  Your cart is currently empty
-                </p>
-              </div>
-            ) : (
-              cart.map((item) => (
-                <div
-                  key={item.product.id}
-                  className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100"
-                >
-                  <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-white shrink-0">
+        {cart.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <ShoppingBasket className="size-10 text-mocha" aria-hidden />
+            <p className="mt-2 font-display text-xl font-semibold">
+              Nothing in your basket yet
+            </p>
+            <p className="max-w-xs text-mocha">
+              Pick something from the menu and it will be baked for you on{" "}
+              <BakeDate />.
+            </p>
+            <Link
+              href="/#menu"
+              onClick={close}
+              className="btn btn-primary mt-4"
+            >
+              See the menu
+            </Link>
+          </div>
+        ) : (
+          <>
+            <ul className="flex-1 divide-y divide-crust overflow-y-auto px-4 sm:px-6">
+              {cart.map((item) => (
+                <li key={item.product.id} className="flex gap-4 py-4">
+                  <div className="relative size-20 shrink-0 overflow-hidden rounded-field bg-oat">
                     <Image
                       src={item.product.image}
-                      alt={item.product.name}
+                      alt=""
                       fill
+                      sizes="80px"
                       className="object-cover"
                     />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-xs font-bold text-gray-900 truncate">
-                      {item.product.name}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Qty: {item.quantity} × GHS{" "}
-                      {(item.product.price || 0).toFixed(2)}
-                    </p>
-                    <p className="text-xs font-bold text-amber-600 mt-1">
-                      GHS{" "}
-                      {((item.product.price || 0) * item.quantity).toFixed(2)}
-                    </p>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-semibold leading-snug">
+                        {item.product.name}
+                      </p>
+                      <p className="shrink-0 font-semibold tabular-nums">
+                        {formatGHS(item.product.price * item.quantity)}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <QuantityStepper
+                        size="sm"
+                        value={item.quantity}
+                        onChange={(value) =>
+                          setQuantity(item.product.id, value)
+                        }
+                        label={item.product.name}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(item.product.id)}
+                        aria-label={`Remove ${item.product.name}`}
+                        className="flex size-10 items-center justify-center rounded-full text-mocha transition-[background-color,color,transform] duration-200 ease-soft hover:bg-jam-soft hover:text-jam active:scale-95"
+                      >
+                        <Trash2 className="size-4" aria-hidden />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => removeFromCart(item.product.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                    aria-label="Remove item"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+                </li>
+              ))}
+            </ul>
 
-          {/* Footer Summary & CTA */}
-          {cart.length > 0 && (
-            <div className="p-4 sm:p-6 border-t border-gray-100 bg-white space-y-4">
-              <div className="flex justify-between items-center font-bold text-base text-gray-900">
-                <span>Subtotal:</span>
-                <span className="text-amber-600">
-                  GHS {subtotal.toFixed(2)}
+            <div className="space-y-4 border-t border-crust px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-mocha">Subtotal</span>
+                <span className="font-display text-2xl font-semibold tabular-nums">
+                  {formatGHS(total)}
                 </span>
               </div>
-
+              <p className="text-sm text-mocha">
+                Order now and it is baked on <BakeDate />.
+              </p>
               <Link
                 href="/checkout"
-                onClick={() => setIsCartOpen(false)}
-                className="w-full bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white font-bold py-3.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
+                onClick={close}
+                className="btn btn-primary w-full"
               >
-                Proceed to Checkout
-                <ArrowRight className="w-4 h-4" />
+                Checkout
+                <ArrowRight className="size-4" aria-hidden />
               </Link>
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
-    </div>
+    </Sheet>
   );
 }

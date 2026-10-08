@@ -2,20 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { formatGHS } from "@/lib/products";
 import {
+  Check,
+  CircleAlert,
   Eye,
   EyeOff,
-  Lock,
-  LogIn,
-  RefreshCw,
-  Package,
-  CheckCircle,
-  Clock,
+  Mail,
   MapPin,
   Phone,
-  Mail,
-  TrendingUp,
-  AlertCircle,
+  RefreshCw,
+  Undo2,
 } from "lucide-react";
 
 interface OrderItem {
@@ -42,6 +39,19 @@ interface Order {
   items: OrderItem[];
 }
 
+type Filter = "Pending" | "Completed" | "All";
+
+const isDone = (order: Order) =>
+  order.status === "Completed" || order.status === "Delivered";
+
+const placedFormat = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -50,9 +60,13 @@ export default function AdminPage() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+  const [updateError, setUpdateError] = useState("");
+  const [filter, setFilter] = useState<Filter>("Pending");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
+    setFetchError("");
     const { data, error } = await supabase
       .from("orders")
       .select("*")
@@ -60,6 +74,7 @@ export default function AdminPage() {
 
     if (error) {
       console.error("Error fetching orders:", error.message);
+      setFetchError(error.message);
     } else if (data) {
       setOrders(data as Order[]);
     }
@@ -68,6 +83,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag for the first fetch after sign-in
       fetchOrders();
     }
   }, [isAuthenticated, fetchOrders]);
@@ -80,18 +96,19 @@ export default function AdminPage() {
       setIsAuthenticated(true);
       setError("");
     } else {
-      setError("Invalid admin password. Please try again.");
+      setError("That password is not right. Try again.");
     }
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    setUpdateError("");
     const { error } = await supabase
       .from("orders")
       .update({ status: newStatus })
       .eq("id", orderId);
 
     if (error) {
-      alert(`Failed to update status: ${error.message}`);
+      setUpdateError(`Could not update the order: ${error.message}`);
     } else {
       setOrders((prev) =>
         prev.map((ord) =>
@@ -101,72 +118,56 @@ export default function AdminPage() {
     }
   };
 
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter((o) => o.status === "Pending").length;
-  const completedOrders = orders.filter(
-    (o) => o.status === "Completed" || o.status === "Delivered",
-  ).length;
-  const totalRevenue = orders.reduce(
-    (acc, o) => acc + Number(o.total_amount || 0),
-    0,
-  );
-
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white max-w-sm w-full rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-xs space-y-6">
-          <div className="text-center space-y-2">
-            <div className="w-14 h-14 bg-amber-100/70 rounded-2xl flex items-center justify-center mx-auto text-amber-700 shadow-inner">
-              <Lock className="w-7 h-7" />
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-              Admin Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500 font-medium">
-              Campus Cake Store Order Management
-            </p>
-          </div>
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="slip w-full max-w-sm p-6 sm:p-8">
+          <p className="font-display text-2xl font-semibold tracking-tight">
+            Nades Hands
+          </p>
+          <h1 className="mt-6 font-display text-3xl font-semibold tracking-tight">
+            Sign in to orders
+          </h1>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
+              <label htmlFor="password" className="mb-1.5 block font-medium">
                 Password
               </label>
               <div className="relative">
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter admin key"
+                  autoComplete="current-password"
                   required
-                  className="w-full pl-3.5 pr-10 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 text-base sm:text-sm font-medium focus:outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "password-error" : undefined}
+                  className="field pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors"
+                  className="absolute right-1 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-mocha transition-colors duration-200 hover:text-cocoa"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="size-4" aria-hidden />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="size-4" aria-hidden />
                   )}
                 </button>
               </div>
+              {error && (
+                <p id="password-error" className="mt-1.5 text-sm text-jam">
+                  {error}
+                </p>
+              )}
             </div>
 
-            {error && (
-              <p className="text-xs font-semibold text-red-600 bg-red-50/80 p-3 rounded-xl border border-red-100 text-center">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              className="w-full bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-bold py-3.5 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-xs"
-            >
-              <LogIn className="w-4 h-4" /> Access Dashboard
+            <button type="submit" className="btn btn-primary w-full">
+              Sign in
             </button>
           </form>
         </div>
@@ -174,255 +175,317 @@ export default function AdminPage() {
     );
   }
 
+  const pending = orders.filter((o) => !isDone(o));
+  const completed = orders.filter(isDone);
+  const totalRevenue = orders.reduce(
+    (acc, o) => acc + Number(o.total_amount || 0),
+    0,
+  );
+
+  // What to bake: every item across the orders still waiting.
+  const bakeTotals = new Map<string, number>();
+  for (const order of pending) {
+    if (!Array.isArray(order.items)) continue;
+    for (const item of order.items) {
+      bakeTotals.set(
+        item.name,
+        (bakeTotals.get(item.name) || 0) + (item.quantity || 0),
+      );
+    }
+  }
+  const bakeList = [...bakeTotals].sort((a, b) => b[1] - a[1]);
+
+  const filters: { name: Filter; count: number }[] = [
+    { name: "Pending", count: pending.length },
+    { name: "Completed", count: completed.length },
+    { name: "All", count: orders.length },
+  ];
+  const visible =
+    filter === "Pending" ? pending : filter === "Completed" ? completed : orders;
+
   return (
-    <main className="min-h-screen bg-gray-50/70 pb-20">
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-20 shadow-xs backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black text-base shadow-xs">
-              🎂
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-black text-gray-900 leading-tight">
-                Dashboard
-              </h1>
-              <p className="text-xs font-semibold text-gray-400">Live Orders</p>
-            </div>
-          </div>
+    <>
+      <header className="sticky top-0 z-20 border-b border-crust bg-flour/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <p className="font-display text-2xl font-semibold leading-none tracking-tight">
+            Nades Hands
+            <span className="ml-2 font-sans text-base font-medium text-mocha">
+              Orders
+            </span>
+          </p>
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={fetchOrders}
               disabled={loading}
-              className="flex items-center gap-1.5 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 active:scale-95 px-3 py-2 rounded-xl transition-all"
+              className="btn btn-quiet btn-sm"
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 text-gray-600 ${
-                  loading ? "animate-spin" : ""
-                }`}
+                className={`size-4 ${loading ? "animate-spin" : ""}`}
+                aria-hidden
               />
               <span className="hidden sm:inline">Refresh</span>
+              <span className="sr-only sm:hidden">Refresh</span>
             </button>
             <button
+              type="button"
               onClick={() => setIsAuthenticated(false)}
-              className="text-xs font-bold text-red-600 hover:bg-red-50 active:scale-95 px-3 py-2 rounded-xl border border-red-100 transition-all"
+              className="btn btn-quiet btn-sm"
             >
-              Log Out
+              Sign out
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
-            <div className="flex items-center justify-between text-gray-400">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Total Orders
-              </span>
-              <Package className="w-4 h-4 text-amber-600" />
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-8 px-4 py-8 sm:px-6">
+        <section
+          aria-labelledby="bake-list-heading"
+          className="slip grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.4fr_1fr] lg:gap-10"
+        >
+          <div>
+            <h1
+              id="bake-list-heading"
+              className="font-display text-3xl font-semibold tracking-tight"
+            >
+              {pending.length === 0
+                ? "Nothing to bake yet"
+                : `To bake: ${pending.length} ${pending.length === 1 ? "order" : "orders"} waiting`}
+            </h1>
+            {bakeList.length > 0 ? (
+              <ul className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+                {bakeList.map(([name, quantity]) => (
+                  <li
+                    key={name}
+                    className="flex items-baseline justify-between gap-4 border-b border-crust pb-2"
+                  >
+                    <span>{name}</span>
+                    <span className="font-display text-xl font-semibold tabular-nums">
+                      {quantity}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-mocha">
+                Paid orders appear here with a total for each bake.
+              </p>
+            )}
+          </div>
+
+          <dl className="flex flex-wrap gap-x-8 gap-y-4 self-start lg:border-l lg:border-crust lg:pl-10">
+            <div>
+              <dt className="text-sm text-mocha">Pending</dt>
+              <dd className="font-display text-2xl font-semibold tabular-nums">
+                {pending.length}
+              </dd>
             </div>
-            <p className="text-xl sm:text-2xl font-black text-gray-900">
-              {totalOrders}
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
-            <div className="flex items-center justify-between text-gray-400">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Pending
-              </span>
-              <AlertCircle className="w-4 h-4 text-amber-500" />
+            <div>
+              <dt className="text-sm text-mocha">Completed</dt>
+              <dd className="font-display text-2xl font-semibold tabular-nums">
+                {completed.length}
+              </dd>
             </div>
-            <p className="text-xl sm:text-2xl font-black text-amber-600">
-              {pendingOrders}
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
-            <div className="flex items-center justify-between text-gray-400">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Completed
-              </span>
-              <CheckCircle className="w-4 h-4 text-green-500" />
+            <div>
+              <dt className="text-sm text-mocha">Revenue</dt>
+              <dd className="font-display text-2xl font-semibold tabular-nums">
+                {formatGHS(totalRevenue)}
+              </dd>
             </div>
-            <p className="text-xl sm:text-2xl font-black text-green-600">
-              {completedOrders}
-            </p>
-          </div>
+          </dl>
+        </section>
 
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-1">
-            <div className="flex items-center justify-between text-gray-400">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Revenue
-              </span>
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-            </div>
-            <p className="text-xl sm:text-2xl font-black text-gray-900">
-              GHS {totalRevenue.toFixed(2)}
-            </p>
-          </div>
-        </div>
+        {(fetchError || updateError) && (
+          <p
+            role="alert"
+            className="flex gap-3 rounded-field bg-jam-soft p-4 text-jam"
+          >
+            <CircleAlert className="mt-1 size-4 shrink-0" aria-hidden />
+            <span>
+              {fetchError
+                ? `Could not load orders: ${fetchError}. Press Refresh to try again.`
+                : updateError}
+            </span>
+          </p>
+        )}
 
-        {loading && orders.length === 0 ? (
-          <div className="bg-white p-12 rounded-3xl border border-gray-100 text-center text-sm text-gray-400 shadow-xs">
-            Fetching order feed...
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="bg-white p-12 rounded-3xl border border-gray-100 text-center text-sm text-gray-400 space-y-2 shadow-xs">
-            <Package className="w-10 h-10 mx-auto text-gray-300" />
-            <p className="font-bold text-gray-700 text-base">No orders yet</p>
-            <p className="text-gray-400">
-              New customer purchases will appear here live.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {orders.map((order) => {
-              const customerName =
-                order.full_name || order.customer_name || "N/A";
-              const phone = order.phone || order.phone_number || "N/A";
-              const location = order.delivery_location || "N/A";
-              const isCompleted =
-                order.status === "Completed" || order.status === "Delivered";
-
+        <section aria-label="Orders">
+          <div
+            role="group"
+            aria-label="Filter orders"
+            className="flex gap-2 overflow-x-auto pb-1"
+          >
+            {filters.map(({ name, count }) => {
+              const selected = name === filter;
               return (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-3xl border border-gray-100 shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden"
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setFilter(name)}
+                  className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold tabular-nums transition-colors duration-200 ease-soft ${
+                    selected
+                      ? "bg-cocoa text-flour"
+                      : "bg-oat text-cocoa hover:bg-crust"
+                  }`}
                 >
-                  <div className="p-4 sm:p-5 border-b border-gray-100/60 bg-gray-50/40 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-gray-900 tracking-tight">
-                        #{order.paystack_ref.slice(-8).toUpperCase()}
-                      </span>
-                      <span
-                        className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
-                          isCompleted
-                            ? "bg-green-100 text-green-700 border border-green-200/50"
-                            : "bg-amber-100 text-amber-700 border border-amber-200/50"
-                        }`}
-                      >
-                        {order.status}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-400">
-                      <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                      {new Date(order.created_at).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="p-4 sm:p-5 space-y-4 flex-1 text-xs sm:text-sm">
-                    <div className="space-y-1">
-                      <p className="font-bold text-gray-900 text-sm sm:text-base">
-                        {customerName}
-                      </p>
-                      <div className="flex flex-col gap-1 text-gray-600 pt-0.5">
-                        <a
-                          href={`tel:${phone}`}
-                          className="flex items-center gap-1.5 hover:text-amber-600 transition-colors"
-                        >
-                          <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="font-medium">{phone}</span>
-                        </a>
-                        {order.email && (
-                          <span className="flex items-center gap-1.5 text-gray-500 truncate">
-                            <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            <span className="truncate">{order.email}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-amber-50/60 border border-amber-100/80 rounded-2xl p-3 space-y-1">
-                      <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs">
-                        <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        Delivery Location
-                      </div>
-                      <p className="text-gray-800 font-semibold leading-relaxed">
-                        {location}
-                      </p>
-                      {order.notes && (
-                        <p className="text-xs text-gray-500 italic pt-1 border-t border-amber-200/40 mt-1">
-                          &quot;{order.notes}&quot;
-                        </p>
-                      )}
-                    </div>
-
-                    {order.items && Array.isArray(order.items) && (
-                      <div className="bg-gray-50/70 rounded-2xl p-3 border border-gray-100 space-y-2">
-                        <p className="text-xs font-extrabold uppercase text-gray-400 tracking-wider">
-                          Items
-                        </p>
-                        <div className="divide-y divide-gray-100">
-                          {order.items.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="py-1.5 flex justify-between items-center text-xs sm:text-sm"
-                            >
-                              <span className="font-medium text-gray-800 truncate pr-2">
-                                {item.name}{" "}
-                                <span className="font-bold text-gray-400">
-                                  x{item.quantity}
-                                </span>
-                              </span>
-                              <span className="font-bold text-gray-900 shrink-0">
-                                GHS{" "}
-                                {(
-                                  item.totalPrice ||
-                                  item.unitPrice * item.quantity ||
-                                  0
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 sm:p-5 border-t border-gray-100 bg-gray-50/30 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase font-bold text-gray-400 tracking-wider">
-                        Total
-                      </p>
-                      <p className="text-base sm:text-lg font-black text-amber-600">
-                        GHS {Number(order.total_amount || 0).toFixed(2)}
-                      </p>
-                    </div>
-
-                    <div>
-                      {!isCompleted ? (
-                        <button
-                          onClick={() =>
-                            updateOrderStatus(order.id, "Completed")
-                          }
-                          className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 active:scale-95 text-white font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm transition-all shadow-xs"
-                        >
-                          <CheckCircle className="w-4 h-4" /> Complete
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => updateOrderStatus(order.id, "Pending")}
-                          className="text-xs sm:text-sm font-bold text-gray-600 bg-gray-200/70 hover:bg-gray-200 active:scale-95 px-3.5 py-2 rounded-xl transition-all"
-                        >
-                          Mark Pending
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  {name} {count}
+                </button>
               );
             })}
           </div>
-        )}
-      </div>
-    </main>
+
+          {loading && orders.length === 0 ? (
+            <div
+              aria-busy="true"
+              className="mt-6 grid animate-pulse gap-4 md:grid-cols-2 lg:grid-cols-3"
+            >
+              <span className="sr-only">Loading orders</span>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-72 rounded-card bg-oat" />
+              ))}
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="mt-6 rounded-card border border-dashed border-crust p-10 text-center">
+              <p className="font-display text-xl font-semibold">
+                {orders.length === 0
+                  ? "No orders yet"
+                  : `No ${filter.toLowerCase()} orders`}
+              </p>
+              <p className="mt-1 text-mocha">
+                {orders.length === 0
+                  ? "When a customer pays, their order shows up here."
+                  : "Choose another filter to see the rest."}
+              </p>
+            </div>
+          ) : (
+            <ul className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {visible.map((order) => {
+                const customerName =
+                  order.full_name || order.customer_name || "No name given";
+                const phone = order.phone || order.phone_number;
+                const done = isDone(order);
+
+                return (
+                  <li key={order.id} className="slip flex flex-col">
+                    <div className="flex-1 space-y-4 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-lg font-semibold leading-snug">
+                            {customerName}
+                          </p>
+                          <p className="text-sm text-mocha">
+                            {placedFormat.format(new Date(order.created_at))} ·
+                            #{order.paystack_ref.slice(-8).toUpperCase()}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            done
+                              ? "bg-leaf-soft text-leaf"
+                              : "bg-butter-soft text-cocoa-deep"
+                          }`}
+                        >
+                          {order.status}
+                        </span>
+                      </div>
+
+                      <ul className="space-y-1 text-sm">
+                        <li className="flex gap-2">
+                          <MapPin
+                            className="mt-0.5 size-4 shrink-0 text-mocha"
+                            aria-hidden
+                          />
+                          <span className="font-medium">
+                            {order.delivery_location || "No location given"}
+                          </span>
+                        </li>
+                        {phone && (
+                          <li>
+                            <a
+                              href={`tel:${phone}`}
+                              className="inline-flex items-center gap-2 underline decoration-crust underline-offset-4 hover:decoration-cocoa"
+                            >
+                              <Phone
+                                className="size-4 shrink-0 text-mocha"
+                                aria-hidden
+                              />
+                              {phone}
+                            </a>
+                          </li>
+                        )}
+                        {order.email && (
+                          <li className="flex items-center gap-2 text-mocha">
+                            <Mail className="size-4 shrink-0" aria-hidden />
+                            <span className="truncate">{order.email}</span>
+                          </li>
+                        )}
+                      </ul>
+
+                      {order.notes && (
+                        <p className="rounded-field bg-butter-soft p-3 text-sm">
+                          <span className="font-semibold">Note: </span>
+                          {order.notes}
+                        </p>
+                      )}
+
+                      {Array.isArray(order.items) && (
+                        <ul className="space-y-1.5 text-sm">
+                          {order.items.map((item, idx) => (
+                            <li key={idx} className="flex justify-between gap-3">
+                              <span>
+                                <span className="font-semibold tabular-nums">
+                                  {item.quantity} ×
+                                </span>{" "}
+                                {item.name}
+                              </span>
+                              <span className="shrink-0 text-mocha tabular-nums">
+                                {formatGHS(
+                                  item.totalPrice ||
+                                    item.unitPrice * item.quantity ||
+                                    0,
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="slip-tear flex items-center justify-between gap-3 p-5">
+                      <p className="font-display text-xl font-semibold tabular-nums">
+                        {formatGHS(Number(order.total_amount || 0))}
+                      </p>
+                      {done ? (
+                        <button
+                          type="button"
+                          onClick={() => updateOrderStatus(order.id, "Pending")}
+                          className="btn btn-quiet btn-sm"
+                        >
+                          <Undo2 className="size-4" aria-hidden />
+                          Mark pending
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateOrderStatus(order.id, "Completed")
+                          }
+                          className="btn btn-primary btn-sm"
+                        >
+                          <Check className="size-4" aria-hidden />
+                          Mark completed
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </main>
+    </>
   );
 }

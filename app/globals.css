@@ -1,19 +1,266 @@
 @import "tailwindcss";
 
-/* Base typography scaling */
-html {
-  font-size: 15px;
-}
+/* Design tokens. See DESIGN.md for what each one is for. */
+@theme {
+  --color-flour: #f7f3ee;
+  --color-paper: #fffdfa;
+  --color-oat: #efe8de;
+  --color-crust: #e6dccf;
+  --color-cocoa: #3d2822;
+  --color-cocoa-deep: #2a1b17;
+  --color-mocha: #76574a;
+  --color-butter: #f2c14e;
+  --color-butter-soft: #fbeecb;
+  --color-leaf: #2f6b4f;
+  --color-leaf-soft: #e3efe8;
+  --color-jam: #a8322d;
+  --color-jam-soft: #f8e4e2;
 
-@media (min-width: 640px) {
-  html {
-    font-size: 16px;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --radius-field: 0.75rem;
+  --radius-card: 1.25rem;
+  --radius-dialog: 1.75rem;
+
+  --shadow-lift:
+    0 1px 2px rgb(61 40 34 / 0.06), 0 16px 40px -16px rgb(61 40 34 / 0.28);
+
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-rise: rise 0.7s var(--ease-soft) both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
   }
 }
 
-body {
-  color: #111827; /* text-gray-900 */
-  background-color: #f9fafb; /* bg-gray-50 */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+    scrollbar-gutter: stable;
+  }
+
+  /* Lock the page behind an open basket or product dialog. */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  body {
+    background-color: var(--color-flour);
+    color: var(--color-cocoa);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cocoa);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-butter);
+    color: var(--color-cocoa-deep);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  /* Fraunces with its soft axis turned up: rounder, more hand-made. */
+  .font-display {
+    font-variation-settings: "SOFT" 100;
+    font-optical-sizing: auto;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 3rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 1rem;
+    line-height: 1.25;
+    transition:
+      background-color 0.2s var(--ease-soft),
+      color 0.2s var(--ease-soft),
+      border-color 0.2s var(--ease-soft),
+      transform 0.2s var(--ease-soft);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background-color: var(--color-cocoa);
+    color: var(--color-flour);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-cocoa-deep);
+  }
+  .btn-quiet {
+    background-color: var(--color-oat);
+    color: var(--color-cocoa);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    background-color: var(--color-crust);
+  }
+  .btn-sm {
+    min-height: 2.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .field {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.75rem 0.875rem;
+    border-radius: var(--radius-field);
+    border: 1px solid var(--color-crust);
+    background-color: var(--color-paper);
+    color: var(--color-cocoa);
+    font-size: 1rem;
+    transition:
+      border-color 0.2s var(--ease-soft),
+      box-shadow 0.2s var(--ease-soft);
+  }
+  .field::placeholder {
+    color: color-mix(in srgb, var(--color-mocha) 65%, transparent);
+  }
+  .field:hover {
+    border-color: var(--color-mocha);
+  }
+  .field:focus-visible {
+    outline: none;
+    border-color: var(--color-cocoa);
+    box-shadow: 0 0 0 3px rgb(242 193 78 / 0.55);
+  }
+  .field[aria-invalid="true"] {
+    border-color: var(--color-jam);
+  }
+
+  /* An order slip: paper card with a dashed tear line between its parts. */
+  .slip {
+    background-color: var(--color-paper);
+    border: 1px solid var(--color-crust);
+    border-radius: var(--radius-card);
+  }
+  .slip-tear {
+    border-top: 2px dashed var(--color-crust);
+  }
+
+  /* Native dialogs: the basket drawer and the product sheet. */
+  dialog.sheet {
+    position: fixed;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    max-width: none;
+    max-height: none;
+    background-color: var(--color-paper);
+    color: var(--color-cocoa);
+    box-shadow: var(--shadow-lift);
+    opacity: 0;
+    transition:
+      transform 0.3s var(--ease-soft),
+      opacity 0.2s var(--ease-soft),
+      overlay 0.3s allow-discrete,
+      display 0.3s allow-discrete;
+  }
+  dialog.sheet[open] {
+    opacity: 1;
+    transform: none;
+  }
+  dialog.sheet::backdrop {
+    background-color: rgb(42 27 23 / 0);
+    transition:
+      background-color 0.3s var(--ease-soft),
+      overlay 0.3s allow-discrete,
+      display 0.3s allow-discrete;
+  }
+  dialog.sheet[open]::backdrop {
+    background-color: rgb(42 27 23 / 0.55);
+  }
+
+  /* Basket: full-height drawer from the right. */
+  dialog.sheet-drawer {
+    inset: 0 0 0 auto;
+    width: min(100%, 27rem);
+    height: 100dvh;
+    transform: translateX(2rem);
+  }
+
+  /* Product: bottom sheet on phones, centred card from 640px. */
+  dialog.sheet-product {
+    inset: auto 0 0 0;
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+    transform: translateY(2rem);
+    overflow: hidden;
+  }
+  @media (min-width: 640px) {
+    dialog.sheet-product {
+      inset: 0;
+      margin: auto;
+      width: min(100% - 3rem, 52rem);
+      height: fit-content;
+      max-height: min(90dvh, 36rem);
+      border-radius: var(--radius-dialog);
+      transform: translateY(1rem) scale(0.98);
+    }
+  }
+
+  @starting-style {
+    dialog.sheet[open] {
+      opacity: 0;
+    }
+    dialog.sheet-drawer[open] {
+      transform: translateX(2rem);
+    }
+    dialog.sheet-product[open] {
+      transform: translateY(2rem);
+    }
+    dialog.sheet[open]::backdrop {
+      background-color: rgb(42 27 23 / 0);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
