@@ -4,6 +4,7 @@ import { ArrowDown } from "lucide-react";
 import BakeWeek from "@/components/BakeWeek";
 import Menu from "@/components/Menu";
 import Footer from "@/components/Footer";
+import BasketBar from "@/components/BasketBar";
 
 export default function Home() {
   return (
@@ -54,6 +55,7 @@ export default function Home() {
         </div>
 
         <Menu />
+        <BasketBar />
       </main>
       <Footer />
     </>

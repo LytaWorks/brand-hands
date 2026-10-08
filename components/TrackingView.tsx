@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, CircleAlert, Search } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatGHS } from "@/lib/products";
 import { formatBakeDay, getBakeSchedule, useNow } from "@/lib/bake";
+import { loadLastOrder, SHOP_WHATSAPP, splitDeliveryDay } from "@/lib/customer";
+
+const noopSubscribe = () => () => {};
 
 interface TrackedOrder {
   status: string;
@@ -14,6 +17,7 @@ interface TrackedOrder {
   total_amount: number;
   paystack_ref: string;
   items: { name: string; quantity: number }[] | null;
+  notes: string | null;
 }
 
 type Lookup =
@@ -70,6 +74,7 @@ export default function TrackingView() {
   const ref = useSearchParams().get("ref")?.trim() || "";
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const now = useNow();
+  const lastOrder = useSyncExternalStore(noopSubscribe, loadLastOrder, () => null);
 
   useEffect(() => {
     if (!ref) return;
@@ -77,7 +82,7 @@ export default function TrackingView() {
 
     supabase
       .from("orders")
-      .select("status, created_at, total_amount, paystack_ref, items")
+      .select("status, created_at, total_amount, paystack_ref, items, notes")
       .eq("paystack_ref", ref)
       .limit(1)
       .then(
@@ -108,6 +113,20 @@ export default function TrackingView() {
           receipt email.
         </p>
         <LookupForm />
+        {lastOrder && (
+          <Link
+            href={`/tracking?ref=${encodeURIComponent(lastOrder)}`}
+            className="slip mt-6 flex items-center justify-between gap-4 p-4 transition-colors duration-200 ease-soft hover:border-mocha"
+          >
+            <span className="min-w-0">
+              <span className="block font-semibold">Your last order</span>
+              <span className="block truncate text-sm text-mocha">
+                Reference {lastOrder}
+              </span>
+            </span>
+            <ArrowRight className="size-5 shrink-0" aria-hidden />
+          </Link>
+        )}
       </>
     );
   }
@@ -149,12 +168,21 @@ export default function TrackingView() {
           </span>
         </p>
         <LookupForm initial={ref} />
+        {SHOP_WHATSAPP && (
+          <p className="mt-4 text-mocha">
+            Still stuck?{" "}
+            <a href={SHOP_WHATSAPP} className="font-semibold text-cocoa underline underline-offset-4">
+              Message us on WhatsApp
+            </a>
+          </p>
+        )}
       </>
     );
   }
 
   const { order } = current;
   const placed = new Date(order.created_at);
+  const { deliveryDay } = splitDeliveryDay(order.notes);
   const bakeDate = getBakeSchedule(placed).bakeDay;
   const bakeDay = formatBakeDay(bakeDate);
   const delivered =
@@ -178,7 +206,7 @@ export default function TrackingView() {
       title: delivered ? "Delivered" : "Delivery",
       detail: delivered
         ? "Enjoy. Thank you for ordering."
-        : "Friday afternoon or over the weekend.",
+        : deliveryDay || "Friday afternoon or over the weekend.",
       done: delivered,
     },
   ];

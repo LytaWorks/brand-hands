@@ -15,7 +15,8 @@ export default function Menu() {
   const [product, setProduct] = useState<Product | null>(null);
   const [viewing, setViewing] = useState(false);
   const [openCount, setOpenCount] = useState(0);
-  const { addToCart } = useCart();
+  const { addToCart, cart } = useCart();
+  const inBasket = new Map(cart.map((line) => [line.product.id, line.quantity]));
 
   const visible =
     category === "All"
@@ -95,16 +96,29 @@ export default function Menu() {
             </button>
 
             <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="font-semibold tabular-nums">
+              <span className="whitespace-nowrap font-semibold tabular-nums max-[359px]:text-sm">
                 {formatGHS(item.price)}
               </span>
               <button
                 type="button"
                 onClick={() => addToCart(item, 1)}
-                aria-label={`Add ${item.name} to basket`}
+                aria-label={
+                  inBasket.has(item.id)
+                    ? `Add another ${item.name}, ${inBasket.get(item.id)} in basket`
+                    : `Add ${item.name} to basket`
+                }
                 className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-cocoa text-flour transition-[background-color,transform] duration-200 ease-soft after:absolute after:-inset-1 hover:bg-cocoa-deep active:scale-95"
               >
                 <Plus className="size-5" aria-hidden />
+                {inBasket.has(item.id) && (
+                  <span
+                    key={inBasket.get(item.id)}
+                    aria-hidden
+                    className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 animate-rise items-center justify-center rounded-full bg-butter px-1 text-xs font-bold tabular-nums text-cocoa-deep ring-2 ring-flour [animation-duration:0.3s]"
+                  >
+                    {inBasket.get(item.id)}
+                  </span>
+                )}
               </button>
             </div>
           </li>

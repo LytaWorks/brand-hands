@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Mail, Phone } from "lucide-react";
+import { Mail, MessageCircle, Phone } from "lucide-react";
+import { SHOP_WHATSAPP } from "@/lib/customer";
 
 export default function Footer() {
   return (
@@ -18,6 +19,17 @@ export default function Footer() {
         <div>
           <h2 className="font-semibold">Get in touch</h2>
           <ul className="mt-3 space-y-1">
+            {SHOP_WHATSAPP && (
+              <li>
+                <a
+                  href={SHOP_WHATSAPP}
+                  className="inline-flex items-center gap-2.5 py-1.5 text-flour/70 transition-colors duration-200 hover:text-butter focus-visible:outline-butter"
+                >
+                  <MessageCircle className="size-4 shrink-0" aria-hidden />
+                  Chat on WhatsApp
+                </a>
+              </li>
+            )}
             <li>
               <a
                 href="tel:+233000000000"

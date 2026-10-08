@@ -7,6 +7,14 @@ import { useCart } from "@/context/CartContext";
 import { supabase } from "@/lib/supabase";
 import { formatGHS } from "@/lib/products";
 import BakeDate from "@/components/BakeDate";
+import { formatBakeDay, getBakeSchedule, useNow } from "@/lib/bake";
+import {
+  loadDetails,
+  saveDetails,
+  saveLastOrder,
+  SHOP_WHATSAPP,
+  withDeliveryDay,
+} from "@/lib/customer";
 import {
   ArrowLeft,
   CircleAlert,
@@ -16,10 +24,14 @@ import {
 } from "lucide-react";
 
 type FieldName = "fullName" | "email" | "phone" | "deliveryLocation";
-type FormData = Record<FieldName | "notes", string>;
+type FormData = Record<FieldName | "notes" | "deliveryDay", string>;
+type FormErrors = Partial<Record<FieldName | "deliveryDay", string>>;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface Confirmation {
   reference: string;
+  deliveryDay: string;
   name: string;
   total: number;
   /** Set when Paystack took the payment but the order row did not save. */
@@ -27,7 +39,7 @@ interface Confirmation {
 }
 
 function validate(data: FormData) {
-  const errors: Partial<Record<FieldName, string>> = {};
+  const errors: FormErrors = {};
   if (!data.fullName.trim()) errors.fullName = "Enter your name.";
   if (!/^\S+@\S+\.\S+$/.test(data.email.trim())) {
     errors.email = "Enter an email like name@example.com. Your receipt goes here.";
@@ -38,21 +50,51 @@ function validate(data: FormData) {
   if (!data.deliveryLocation.trim()) {
     errors.deliveryLocation = "Tell us your hostel, block and room.";
   }
+  if (!data.deliveryDay) errors.deliveryDay = "Choose a delivery day.";
   return errors;
 }
 
 export default function CheckoutPage() {
-  const { cart, ready, itemCount, total, clearCart } = useCart();
+  const { ready } = useCart();
+  // The form mounts only in the browser, once saved details can be read.
+  if (!ready) {
+    return <main className="flex-1" aria-busy="true" />;
+  }
+  return <Checkout />;
+}
+
+function Checkout() {
+  const { cart, itemCount, total, clearCart } = useCart();
+  const now = useNow();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState<FormData>(() => ({
     fullName: "",
     email: "",
     phone: "",
     deliveryLocation: "",
+    ...loadDetails(),
+    deliveryDay: "",
     notes: "",
-  });
-  const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
+  }));
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const bakeDay = now ? getBakeSchedule(now).bakeDay : null;
+  const deliveryDays = bakeDay
+    ? [
+        { label: "Friday afternoon", suffix: " afternoon", offset: 0 },
+        { label: "Saturday", suffix: "", offset: 1 },
+        { label: "Sunday", suffix: "", offset: 2 },
+      ].map(({ label, suffix, offset }) => {
+        const day = formatBakeDay(new Date(bakeDay.getTime() + offset * DAY_MS));
+        return {
+          label,
+          // "Saturday 17 Oct" is stored with the order; "17 Oct" is shown under the label.
+          value: day + suffix,
+          date: day.slice(day.indexOf(" ") + 1),
+        };
+      })
+    : [];
   const [formError, setFormError] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -119,7 +161,7 @@ export default function CheckoutPage() {
               delivery_location: formData.deliveryLocation,
               digital_address: formData.deliveryLocation,
               landmark: formData.deliveryLocation,
-              notes: formData.notes,
+              notes: withDeliveryDay(formData.deliveryDay, formData.notes),
               total_amount: total,
               paystack_ref: transaction.reference,
               items: itemsPayload,
@@ -131,7 +173,16 @@ export default function CheckoutPage() {
             console.error("Supabase save error:", error.message);
           }
 
+          saveDetails({
+            fullName: formData.fullName.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim(),
+            deliveryLocation: formData.deliveryLocation.trim(),
+          });
+          if (!error) saveLastOrder(transaction.reference);
+
           setConfirmation({
+            deliveryDay: formData.deliveryDay,
             reference: transaction.reference,
             name: formData.fullName.trim(),
             total,
@@ -178,7 +229,7 @@ export default function CheckoutPage() {
             <div className="flex justify-between gap-4">
               <dt className="text-mocha">Delivery</dt>
               <dd className="text-right font-semibold">
-                Friday afternoon or the weekend
+                {confirmation.deliveryDay}
               </dd>
             </div>
           </dl>
@@ -193,6 +244,14 @@ export default function CheckoutPage() {
                 Your payment went through, but we could not save your delivery
                 details. Please send us the reference above with your name and
                 hostel so we can bake your order.
+                {SHOP_WHATSAPP && (
+                  <>
+                    {" "}
+                    <a href={SHOP_WHATSAPP} className="font-semibold underline">
+                      Message us on WhatsApp
+                    </a>
+                  </>
+                )}
               </span>
             </p>
           )}
@@ -213,10 +272,6 @@ export default function CheckoutPage() {
         </div>
       </main>
     );
-  }
-
-  if (!ready) {
-    return <main className="flex-1" aria-busy="true" />;
   }
 
   if (cart.length === 0) {
@@ -347,6 +402,42 @@ export default function CheckoutPage() {
               {fieldError("deliveryLocation")}
             </div>
 
+            <fieldset
+              aria-describedby={errors.deliveryDay ? "deliveryDay-error" : undefined}
+            >
+              <legend className="mb-1.5 font-medium">Delivery day</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {deliveryDays.map((day) => (
+                  <label
+                    key={day.value}
+                    className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-field border bg-paper px-3.5 py-2.5 transition-colors duration-200 ease-soft has-[:checked]:border-cocoa has-[:checked]:bg-butter-soft has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-cocoa ${
+                      errors.deliveryDay ? "border-jam" : "border-crust hover:border-mocha"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="deliveryDay"
+                      value={day.value}
+                      checked={formData.deliveryDay === day.value}
+                      onChange={handleInputChange}
+                      className="size-4 shrink-0 accent-cocoa outline-none"
+                    />
+                    <span className="leading-tight">
+                      <span className="block font-semibold">{day.label}</span>
+                      <span className="block text-sm text-mocha">
+                        {day.date}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {errors.deliveryDay && (
+                <p id="deliveryDay-error" className="mt-1.5 text-sm text-jam">
+                  {errors.deliveryDay}
+                </p>
+              )}
+            </fieldset>
+
             <div>
               <label htmlFor="notes" className="mb-1.5 block font-medium">
                 Delivery notes{" "}
@@ -438,7 +529,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between gap-4">
                 <dt className="text-mocha">Delivered</dt>
                 <dd className="text-right font-semibold">
-                  That afternoon or weekend
+                  {formData.deliveryDay || "Choose a day"}
                 </dd>
               </div>
               <div className="flex items-baseline justify-between gap-4 pt-2">

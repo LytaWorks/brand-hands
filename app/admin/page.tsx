@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatGHS } from "@/lib/products";
+import { splitDeliveryDay, whatsappLink } from "@/lib/customer";
 import {
+  CalendarDays,
   Check,
   CircleAlert,
   Eye,
   EyeOff,
   Mail,
   MapPin,
+  MessageCircle,
   Phone,
   RefreshCw,
+  Search,
   Undo2,
 } from "lucide-react";
 
@@ -52,10 +56,44 @@ const placedFormat = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
+const timeFormat = new Intl.DateTimeFormat("en-GB", {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+// Signed-in state lasts for the browser tab, so a refresh or a phone
+// waking up does not ask for the password again.
+const AUTH_KEY = "nades-hands-admin";
+const authListeners = new Set<() => void>();
+const subscribeAuth = (listener: () => void) => {
+  authListeners.add(listener);
+  return () => {
+    authListeners.delete(listener);
+  };
+};
+const getAuth = () => {
+  try {
+    return window.sessionStorage.getItem(AUTH_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const setAuth = (signedIn: boolean) => {
+  try {
+    if (signedIn) window.sessionStorage.setItem(AUTH_KEY, "1");
+    else window.sessionStorage.removeItem(AUTH_KEY);
+  } catch {
+    // Without storage the sign-in simply lasts until the next refresh.
+  }
+  authListeners.forEach((listener) => listener());
+};
+
 export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const storedAuth = useSyncExternalStore(subscribeAuth, getAuth, () => false);
+  const [sessionAuth, setSessionAuth] = useState(false);
+  const isAuthenticated = storedAuth || sessionAuth;
   const [error, setError] = useState("");
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -63,9 +101,12 @@ export default function AdminPage() {
   const [fetchError, setFetchError] = useState("");
   const [updateError, setUpdateError] = useState("");
   const [filter, setFilter] = useState<Filter>("Pending");
+  const [query, setQuery] = useState("");
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
+  const fetchOrders = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     setFetchError("");
     const { data, error } = await supabase
       .from("orders")
@@ -77,6 +118,7 @@ export default function AdminPage() {
       setFetchError(error.message);
     } else if (data) {
       setOrders(data as Order[]);
+      setUpdatedAt(new Date());
     }
     setLoading(false);
   }, []);
@@ -88,12 +130,29 @@ export default function AdminPage() {
     }
   }, [isAuthenticated, fetchOrders]);
 
+  // New orders arrive on their own: refresh every minute and whenever the
+  // tab comes back into view.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") fetchOrders(true);
+    };
+    const id = setInterval(refresh, 60_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [isAuthenticated, fetchOrders]);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
     //.trim prevents trailing spaces from failing the match
     if (password.trim() === adminPassword.trim()) {
-      setIsAuthenticated(true);
+      setSessionAuth(true);
+      setAuth(true);
+      setPassword("");
       setError("");
     } else {
       setError("That password is not right. Try again.");
@@ -102,6 +161,7 @@ export default function AdminPage() {
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     setUpdateError("");
+    setUpdating(orderId);
     const { error } = await supabase
       .from("orders")
       .update({ status: newStatus })
@@ -116,6 +176,7 @@ export default function AdminPage() {
         ),
       );
     }
+    setUpdating(null);
   };
 
   if (!isAuthenticated) {
@@ -200,16 +261,30 @@ export default function AdminPage() {
     { name: "Completed", count: completed.length },
     { name: "All", count: orders.length },
   ];
-  const visible =
-    filter === "Pending" ? pending : filter === "Completed" ? completed : orders;
+  const needle = query.trim().toLowerCase();
+  const visible = (
+    filter === "Pending" ? pending : filter === "Completed" ? completed : orders
+  ).filter(
+    (order) =>
+      !needle ||
+      [
+        order.full_name,
+        order.customer_name,
+        order.phone,
+        order.phone_number,
+        order.delivery_location,
+        order.notes,
+        order.paystack_ref,
+      ].some((value) => value?.toLowerCase().includes(needle)),
+  );
 
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-crust bg-flour/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <p className="font-display text-2xl font-semibold leading-none tracking-tight">
+          <p className="whitespace-nowrap font-display text-xl font-semibold leading-none tracking-tight sm:text-2xl">
             Nades Hands
-            <span className="ml-2 font-sans text-base font-medium text-mocha">
+            <span className="ml-2 font-sans text-sm font-medium text-mocha sm:text-base">
               Orders
             </span>
           </p>
@@ -217,7 +292,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={fetchOrders}
+              onClick={() => fetchOrders()}
               disabled={loading}
               className="btn btn-quiet btn-sm"
             >
@@ -230,7 +305,11 @@ export default function AdminPage() {
             </button>
             <button
               type="button"
-              onClick={() => setIsAuthenticated(false)}
+              onClick={() => {
+                setSessionAuth(false);
+                setAuth(false);
+                setOrders([]);
+              }}
               className="btn btn-quiet btn-sm"
             >
               Sign out
@@ -311,11 +390,12 @@ export default function AdminPage() {
         )}
 
         <section aria-label="Orders">
-          <div
-            role="group"
-            aria-label="Filter orders"
-            className="flex gap-2 overflow-x-auto pb-1"
-          >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              role="group"
+              aria-label="Filter orders"
+              className="flex gap-2 overflow-x-auto pb-1"
+            >
             {filters.map(({ name, count }) => {
               const selected = name === filter;
               return (
@@ -334,7 +414,30 @@ export default function AdminPage() {
                 </button>
               );
             })}
+            </div>
+            <div className="relative sm:w-72">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-mocha"
+                aria-hidden
+              />
+              <label htmlFor="order-search" className="sr-only">
+                Search orders
+              </label>
+              <input
+                id="order-search"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Name, phone, hostel or day"
+                className="field pl-10"
+              />
+            </div>
           </div>
+          {updatedAt && (
+            <p className="mt-3 text-sm text-mocha">
+              Updated {timeFormat.format(updatedAt)}. Refreshes every minute.
+            </p>
+          )}
 
           {loading && orders.length === 0 ? (
             <div
@@ -351,12 +454,16 @@ export default function AdminPage() {
               <p className="font-display text-xl font-semibold">
                 {orders.length === 0
                   ? "No orders yet"
-                  : `No ${filter.toLowerCase()} orders`}
+                  : needle
+                    ? `Nothing matches "${query.trim()}"`
+                    : `No ${filter.toLowerCase()} orders`}
               </p>
               <p className="mt-1 text-mocha">
                 {orders.length === 0
                   ? "When a customer pays, their order shows up here."
-                  : "Choose another filter to see the rest."}
+                  : needle
+                    ? "Check the spelling or clear the search."
+                    : "Choose another filter to see the rest."}
               </p>
             </div>
           ) : (
@@ -366,6 +473,9 @@ export default function AdminPage() {
                   order.full_name || order.customer_name || "No name given";
                 const phone = order.phone || order.phone_number;
                 const done = isDone(order);
+                const { deliveryDay, notes } = splitDeliveryDay(order.notes);
+                const whatsapp = whatsappLink(phone);
+                const busy = updating === order.id;
 
                 return (
                   <li key={order.id} className="slip flex flex-col">
@@ -392,6 +502,15 @@ export default function AdminPage() {
                       </div>
 
                       <ul className="space-y-1 text-sm">
+                        {deliveryDay && (
+                          <li className="flex gap-2">
+                            <CalendarDays
+                              className="mt-0.5 size-4 shrink-0 text-mocha"
+                              aria-hidden
+                            />
+                            <span className="font-semibold">{deliveryDay}</span>
+                          </li>
+                        )}
                         <li className="flex gap-2">
                           <MapPin
                             className="mt-0.5 size-4 shrink-0 text-mocha"
@@ -402,10 +521,10 @@ export default function AdminPage() {
                           </span>
                         </li>
                         {phone && (
-                          <li>
+                          <li className="flex flex-wrap items-center gap-x-4">
                             <a
                               href={`tel:${phone}`}
-                              className="inline-flex items-center gap-2 underline decoration-crust underline-offset-4 hover:decoration-cocoa"
+                              className="inline-flex min-h-9 items-center gap-2 underline decoration-crust underline-offset-4 hover:decoration-cocoa"
                             >
                               <Phone
                                 className="size-4 shrink-0 text-mocha"
@@ -413,6 +532,20 @@ export default function AdminPage() {
                               />
                               {phone}
                             </a>
+                            {whatsapp && (
+                              <a
+                                href={whatsapp}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-9 items-center gap-2 underline decoration-crust underline-offset-4 hover:decoration-cocoa"
+                              >
+                                <MessageCircle
+                                  className="size-4 shrink-0 text-mocha"
+                                  aria-hidden
+                                />
+                                WhatsApp
+                              </a>
+                            )}
                           </li>
                         )}
                         {order.email && (
@@ -423,10 +556,10 @@ export default function AdminPage() {
                         )}
                       </ul>
 
-                      {order.notes && (
+                      {notes && (
                         <p className="rounded-field bg-butter-soft p-3 text-sm">
                           <span className="font-semibold">Note: </span>
-                          {order.notes}
+                          {notes}
                         </p>
                       )}
 
@@ -461,6 +594,7 @@ export default function AdminPage() {
                         <button
                           type="button"
                           onClick={() => updateOrderStatus(order.id, "Pending")}
+                          disabled={busy}
                           className="btn btn-quiet btn-sm"
                         >
                           <Undo2 className="size-4" aria-hidden />
@@ -472,10 +606,11 @@ export default function AdminPage() {
                           onClick={() =>
                             updateOrderStatus(order.id, "Completed")
                           }
+                          disabled={busy}
                           className="btn btn-primary btn-sm"
                         >
                           <Check className="size-4" aria-hidden />
-                          Mark completed
+                          {busy ? "Saving…" : "Mark completed"}
                         </button>
                       )}
                     </div>
